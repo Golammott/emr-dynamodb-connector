@@ -42,6 +42,7 @@ import com.amazonaws.services.dynamodbv2.model.ConsumedCapacity;
 import com.amazonaws.services.dynamodbv2.model.DescribeTableRequest;
 import com.amazonaws.services.dynamodbv2.model.DescribeTableResult;
 import com.amazonaws.services.dynamodbv2.model.PutRequest;
+import com.amazonaws.services.dynamodbv2.model.UpdateItemRequest;
 import com.amazonaws.services.dynamodbv2.model.QueryRequest;
 import com.amazonaws.services.dynamodbv2.model.QueryResult;
 import com.amazonaws.services.dynamodbv2.model.ReturnConsumedCapacity;
@@ -49,6 +50,7 @@ import com.amazonaws.services.dynamodbv2.model.ScanRequest;
 import com.amazonaws.services.dynamodbv2.model.ScanResult;
 import com.amazonaws.services.dynamodbv2.model.TableDescription;
 import com.amazonaws.services.dynamodbv2.model.WriteRequest;
+import com.amazonaws.services.dynamodbv2.document.spec.BatchWriteItemSpec;
 
 import org.apache.commons.logging.Log;
 import org.apache.commons.logging.LogFactory;
@@ -131,6 +133,43 @@ public class DynamoDBClient {
       throw new RuntimeException("Could not lookup table " + tableName + " in DynamoDB.", e);
     }
   }
+  
+  public RetryResult<ScanResult> scan(String tableName, String indexName, DynamoDBQueryFilter dynamoDBQueryFilter, Integer segment, Integer
+	      totalSegments, Map<String, AttributeValue> exclusiveStartKey, long limit, Reporter reporter) {
+	  if (indexName != null)
+		  return scanTableIndex(tableName, indexName, null, segment,
+				  totalSegments, exclusiveStartKey, limit, reporter);
+	  return scanTable(tableName, null, segment,
+			  totalSegments, exclusiveStartKey, limit, reporter);
+  }
+  
+  public RetryResult<ScanResult> scanTableIndex(
+	      String tableName, String indexName, DynamoDBQueryFilter dynamoDBQueryFilter, Integer segment, Integer
+	      totalSegments, Map<String, AttributeValue> exclusiveStartKey, long limit, Reporter reporter) {
+	    final ScanRequest scanRequest = new ScanRequest(tableName)
+	    	.withIndexName(indexName)
+	        .withExclusiveStartKey(exclusiveStartKey)
+	        .withLimit(Ints.checkedCast(limit))
+	        .withSegment(segment)
+	        .withTotalSegments(totalSegments)
+	        .withReturnConsumedCapacity(ReturnConsumedCapacity.TOTAL);
+
+	    if (dynamoDBQueryFilter != null) {
+	      Map<String, Condition> scanFilter = dynamoDBQueryFilter.getScanFilter();
+	      if (!scanFilter.isEmpty()) {
+	        scanRequest.setScanFilter(scanFilter);
+	      }
+	    }
+
+	    RetryResult<ScanResult> retryResult = getRetryDriver().runWithRetry(new Callable<ScanResult>() {
+	      @Override
+	      public ScanResult call() {
+	        log.debug("Executing DynamoDB scan: " + scanRequest);
+	        return dynamoDB.scan(scanRequest);
+	      }
+	    }, reporter, PrintCounter.DynamoDBReadThrottle);
+	    return retryResult;
+	  }
 
   public RetryResult<ScanResult> scanTable(
       String tableName, DynamoDBQueryFilter dynamoDBQueryFilter, Integer segment, Integer
@@ -210,6 +249,8 @@ public class DynamoDBClient {
     } else {
       writeBatchList = writeBatchMap.get(tableName);
     }
+    //BatchWriteItemSpec batchWriteItemSpec = new BatchWriteItemSpec().withTableWriteItems(arg0)
+    //new WriteRequest().withPutRequest(new UpdateItemRequest().withKey(item))
     writeBatchList.add(new WriteRequest().withPutRequest(new PutRequest().withItem(item)));
     writeBatchMapSizeBytes += itemSizeBytes;
 

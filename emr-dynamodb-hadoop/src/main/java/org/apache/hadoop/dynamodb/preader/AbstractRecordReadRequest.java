@@ -28,12 +28,14 @@ public abstract class AbstractRecordReadRequest {
   protected final Map<String, AttributeValue> lastEvaluatedKey;
   protected final int segment;
   protected final String tableName;
+  protected final String indexName;
 
   public AbstractRecordReadRequest(AbstractReadManager readMgr, DynamoDBRecordReaderContext
       context, int segment, Map<String, AttributeValue> lastEvaluatedKey) {
     this.readMgr = readMgr;
     this.context = context;
     this.tableName = context.getConf().get(DynamoDBConstants.INPUT_TABLE_NAME);
+    this.indexName = context.getConf().get(DynamoDBConstants.INPUT_INDEX_NAME, null);
     this.segment = segment;
     this.lastEvaluatedKey = lastEvaluatedKey;
   }
